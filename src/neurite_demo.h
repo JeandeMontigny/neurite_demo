@@ -95,7 +95,7 @@ namespace bdm {
       cell.SetDiameter(random->Uniform(7, 8)); // random diameter
 
       auto ne = cell.ExtendNewNeurite({0, 0, 1});
-      ne->GetSoPtr()->AddBiologyModule(neurite_elongation<>());
+//      ne->GetSoPtr()->AddBiologyModule(neurite_elongation<>());
 
       return cell;
     };
