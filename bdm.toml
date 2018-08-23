@@ -1,0 +1,13 @@
+[simulation]
+run_mechanical_interactions = true
+
+[visualization]
+export = true
+live = true
+export_interval = 1
+
+    [[visualize_sim_object]]
+    name = "NeuriteElement"
+
+    [[visualize_sim_object]]
+    name = "NeuronSoma"
