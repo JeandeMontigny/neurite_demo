@@ -15,97 +15,80 @@
 #define NEURITE_DEMO_H_
 
 #include "biodynamo.h"
-#include "random.h"
-#include "substance_initializers.h"
-#include "model_initializer.h"
-
-#include "neuroscience/compile_time_param.h"
-#include "neuroscience/neuron_soma.h"
-#include "neuroscience/neurite_element.h"
+#include "neuroscience/neuroscience.h"
 
 namespace bdm {
 
-  using namespace std;
+using namespace std;
 
-  template <typename TSimulation = Simulation<>>
-  struct neurite_elongation : public BaseBiologyModule {
-    neurite_elongation() : BaseBiologyModule(gAllBmEvents) {}
+struct NeuriteElongation : public BaseBiologyModule {
+  NeuriteElongation() : BaseBiologyModule(gAllBmEvents) {}
 
-    template <typename T>
-    void Run(T* sim_object) {
-      auto&& neurite = sim_object->template ReinterpretCast<experimental::neuroscience::NeuriteElement>();
+  template <typename T>
+  void Run(T* sim_object) {
+    auto&& neurite = sim_object->template ReinterpretCast<
+        experimental::neuroscience::NeuriteElement>();
 
-      neurite->ElongateTerminalEnd(10, {0, 0, 1});
-    }
+    neurite->ElongateTerminalEnd(10, {0, 0, 1});
+  }
 
-    ClassDefNV(neurite_elongation, 1);
-  };
+  ClassDefNV(NeuriteElongation, 1);
+};
 
+// Define compile time parameter
+template <typename Backend>
+struct CompileTimeParam : public DefaultCompileTimeParam<Backend> {
+  using BiologyModules = Variant<NeuriteElongation>;
+  using AtomicTypes =
+      VariadicTypedef<experimental::neuroscience::NeuronSoma,
+                      experimental::neuroscience::NeuriteElement>;
+  using NeuronSoma = experimental::neuroscience::NeuronSoma;
+  using NeuriteElement = experimental::neuroscience::NeuriteElement;
+};
 
-  // Define compile time parameter
-  template <typename Backend>
-  struct CompileTimeParam : public DefaultCompileTimeParam<Backend> {
-    using BiologyModules = Variant<neurite_elongation<>>;
-    using AtomicTypes = VariadicTypedef<experimental::neuroscience::NeuronSoma, experimental::neuroscience::NeuriteElement>;
-    using NeuronSoma = experimental::neuroscience::NeuronSoma;
-    using NeuriteElement = experimental::neuroscience::NeuriteElement;
-  };
+// define my cell creator
+template <typename TSimulation = Simulation<>>
+static void CellCreator(double min, double max, int num_cells) {
+  auto* sim = TSimulation::GetActive();
+  auto* rm = sim->GetResourceManager();
+  auto* random = sim->GetRandom();
 
+  using Soma = experimental::neuroscience::NeuronSoma;
+  auto* container = rm->template Get<Soma>();
+  container->reserve(num_cells);
 
-  // define my cell creator
-  template <typename Function, typename TSimulation = Simulation<>>
-  static void CellCreator(double min, double max, int num_cells,
-                          Function cell_builder) {
-    auto* sim = TSimulation::GetActive();
-    auto* rm = sim->GetResourceManager();
-    auto* random = sim->GetRandom();
+  for (int i = 0; i < num_cells; i++) {
+    double x = random->Uniform(min, max);
+    double y = random->Uniform(min, max);
+    double z = random->Uniform(10);
 
-    // Determine simulation object type which is returned by the cell_builder
-    using FunctionReturnType = decltype(cell_builder({0, 0, 0}));
+    std::array<double, 3> position = {x, y, z};
+    auto&& soma = rm->template New<Soma>(position);
+    soma.SetDiameter(random->Uniform(7, 8));  // random diameter
 
-    auto container = rm->template Get<FunctionReturnType>();
-    container->reserve(num_cells);
+    auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
+    ne->AddBiologyModule(NeuriteElongation());
+  }
+  container->Commit();
 
-    for (int i = 0; i < num_cells; i++) {
-      double x = random->Uniform(min, max);
-      double y = random->Uniform(min, max);
-      double z = random->Uniform(10);
-      auto new_simulation_object = cell_builder({x, y, z});
-      container->push_back(new_simulation_object);
-    }
-    container->Commit();
-  }  // end CellCreator
+}  // end CellCreator
 
+template <typename TSimulation = Simulation<>>
+inline int Simulate(int argc, const char** argv) {
+  Simulation<> simulation(argc, argv);
+  auto* param = simulation.GetParam();
+  auto* scheduler = simulation.GetScheduler();
 
-  template <typename TSimulation = Simulation<>>
-  inline int Simulate(int argc, const char** argv) {
-    Simulation<> simulation(argc, argv);
-    auto* param = simulation.GetParam();
-    auto* scheduler = simulation.GetScheduler();
+  param->bound_space_ = true;
+  param->min_bound_ = 0;
+  param->max_bound_ = 50;
 
-    param->bound_space_ = true;
-    param->min_bound_ = 0;
-    param->max_bound_ = 50;
+  CellCreator(param->min_bound_, param->max_bound_, 10);
 
-    // Construct neurons
-    auto construct_neurons = [](const array<double, 3>& position) {
-      auto* simulation = TSimulation::GetActive();
-      auto* random = simulation->GetRandom();
-      experimental::neuroscience::NeuronSoma cell(position);
-      cell.SetDiameter(random->Uniform(7, 8)); // random diameter
+  scheduler->Simulate(100);
 
-      auto ne = cell.ExtendNewNeurite({0, 0, 1});
-//      ne->GetSoPtr()->AddBiologyModule(neurite_elongation<>());
-
-      return cell;
-    };
-    CellCreator(param->min_bound_, param->max_bound_, 10, construct_neurons);
-
-
-    scheduler->Simulate(100);
-
-    return 0;
-    }
-} // namespace bdm
+  return 0;
+}
+}  // namespace bdm
 
 #endif  // NEURITE_DEMO_H_
