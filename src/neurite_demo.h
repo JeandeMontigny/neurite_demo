@@ -21,15 +21,19 @@ namespace bdm {
 
 using namespace std;
 
+template <typename TSimulation = Simulation<>>
 struct NeuriteElongation : public BaseBiologyModule {
   NeuriteElongation() : BaseBiologyModule(gAllBmEvents) {}
 
   template <typename T>
   void Run(T* sim_object) {
+    auto* sim = TSimulation::GetActive();
+    auto* random = sim->GetRandom();
     auto&& neurite = sim_object->template ReinterpretCast<
         experimental::neuroscience::NeuriteElement>();
 
-    neurite->ElongateTerminalEnd(10, {0, 0, 1});
+    neurite->ElongateTerminalEnd(10, {random->Uniform(-1, 1),
+      random->Uniform(-1, 1), random->Uniform(0, 1)});
   }
 
   ClassDefNV(NeuriteElongation, 1);
@@ -38,7 +42,7 @@ struct NeuriteElongation : public BaseBiologyModule {
 // Define compile time parameter
 template <typename Backend>
 struct CompileTimeParam : public DefaultCompileTimeParam<Backend> {
-  using BiologyModules = Variant<NeuriteElongation>;
+  using BiologyModules = Variant<NeuriteElongation<>>;
   using AtomicTypes =
       VariadicTypedef<experimental::neuroscience::NeuronSoma,
                       experimental::neuroscience::NeuriteElement>;
@@ -67,7 +71,7 @@ static void CellCreator(double min, double max, int num_cells) {
     soma.SetDiameter(random->Uniform(7, 8));  // random diameter
 
     auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
-    ne->AddBiologyModule(NeuriteElongation());
+    ne->AddBiologyModule(NeuriteElongation<>());
   }
   container->Commit();
 
@@ -83,9 +87,12 @@ inline int Simulate(int argc, const char** argv) {
   param->min_bound_ = 0;
   param->max_bound_ = 50;
 
-  CellCreator(param->min_bound_, param->max_bound_, 10);
+  param->neurite_min_length_ = 1.0;
+  param->neurite_max_length_ = 2.0;
 
-  scheduler->Simulate(100);
+  CellCreator(param->min_bound_, param->max_bound_, 1);
+
+  scheduler->Simulate(1000);
 
   return 0;
 }
