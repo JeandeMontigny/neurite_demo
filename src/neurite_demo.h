@@ -21,11 +21,19 @@ namespace bdm {
 
 using namespace std;
 
-template <typename TSimulation = Simulation<>>
+//template <typename TSimulation = Simulation<>>
 struct NeuriteElongation : public BaseBiologyModule {
-  NeuriteElongation() : BaseBiologyModule(gAllBmEvents) {}
+  NeuriteElongation() : BaseBiologyModule(gAllEventIds) {}
 
-  template <typename T>
+  /// Default event constructor
+  template <typename TEvent, typename TBm>
+    NeuriteElongation(const TEvent& event, TBm* other, uint64_t new_oid = 0) {
+  }
+
+  template <typename TEvent, typename... TBms>
+  void EventHandler(const TEvent&, TBms*...) {}
+
+  template <typename T, typename TSimulation = Simulation<>>
   void Run(T* sim_object) {
     auto* sim = TSimulation::GetActive();
     auto&& ne = sim_object->template ReinterpretCast<experimental::neuroscience::NeuriteElement>();
@@ -58,15 +66,18 @@ struct NeuriteElongation : public BaseBiologyModule {
   ClassDefNV(NeuriteElongation, 1);
 };
 
-// Define compile time parameter
-template <typename Backend>
-struct CompileTimeParam : public DefaultCompileTimeParam<Backend> {
-  using BiologyModules = Variant<NeuriteElongation<>>;
-  using AtomicTypes =
-      VariadicTypedef<experimental::neuroscience::NeuronSoma,
-                      experimental::neuroscience::NeuriteElement>;
+// define compile time parameter
+BDM_CTPARAM(experimental::neuroscience) {
+  BDM_CTPARAM_HEADER(experimental::neuroscience);
+
+  // using SimObjectTypes = CTList<NeuronSoma, NeuriteElement>;
   using NeuronSoma = experimental::neuroscience::NeuronSoma;
   using NeuriteElement = experimental::neuroscience::NeuriteElement;
+
+  BDM_CTPARAM_FOR(bdm, NeuriteElement) {
+    using BiologyModules =
+        CTList<NeuriteElongation>;
+  };
 };
 
 // define my cell creator
@@ -90,7 +101,7 @@ static void CellCreator(double min, double max, int num_cells) {
     soma.SetDiameter(random->Uniform(7, 8));  // random diameter
 
     auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
-    ne->AddBiologyModule(NeuriteElongation<>());
+    ne->AddBiologyModule(NeuriteElongation());
   }
   container->Commit();
 
@@ -98,13 +109,16 @@ static void CellCreator(double min, double max, int num_cells) {
 
 template <typename TSimulation = Simulation<>>
 inline int Simulate(int argc, const char** argv) {
-  Simulation<> simulation(argc, argv);
+
+  auto set_param = [&](auto* param) {
+    param->bound_space_ = true;
+    param->min_bound_ = 0;
+    param->max_bound_ = 150;
+  };
+
+  Simulation<> simulation(argc, argv, set_param);
   auto* param = simulation.GetParam();
   auto* scheduler = simulation.GetScheduler();
-
-  param->bound_space_ = true;
-  param->min_bound_ = 0;
-  param->max_bound_ = 150;
 
   CellCreator(param->min_bound_, param->max_bound_, 10);
 
