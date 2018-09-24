@@ -31,6 +31,9 @@ struct NeuriteElongationBM : public BaseBiologyModule {
   template <typename TEvent, typename... TBms>
   void EventHandler(const TEvent&, TBms*...) {}
 
+  // template <typename TOther>
+  // NeuriteElementExt(const experimental::neuroscience::NewNeuriteExtensionEvent& event, TOther* other, uint64_t new_oid = 0) {}
+
   template <typename T, typename TSimulation = Simulation<>>
   void Run(T* ne) {
     // auto* sim = TSimulation::GetActive();
@@ -38,6 +41,31 @@ struct NeuriteElongationBM : public BaseBiologyModule {
   }
 
   ClassDefNV(NeuriteElongationBM, 1);
+};
+
+struct NeuritecreationBM: public BaseBiologyModule {
+  NeuritecreationBM() : BaseBiologyModule(gAllEventIds) {}
+
+  /// Default event constructor
+  template <typename TEvent, typename TBm>
+  NeuritecreationBM(const TEvent& event, TBm* other, uint64_t new_oid = 0) {}
+
+  template <typename TEvent, typename... TBms>
+  void EventHandler(const TEvent&, TBms*...) {}
+
+  template <typename T, typename TSimulation = Simulation<>>
+  void Run(T* soma) {
+
+    if (!init_) {
+      auto&& ne = soma->ExtendNewNeurite({0, 0, 1});
+      ne->AddBiologyModule(NeuriteElongationBM());
+      init_ = true;
+    }
+  }
+
+private:
+  bool init_ = false;
+  ClassDefNV(NeuritecreationBM, 1);
 };
 
 
@@ -48,9 +76,12 @@ BDM_CTPARAM(experimental::neuroscience) {
   using SimObjectTypes = CTList<experimental::neuroscience::NeuronSoma,
     experimental::neuroscience::NeuriteElement>;
 
+  BDM_CTPARAM_FOR(experimental::neuroscience, NeuronSoma) {
+    using BiologyModules = CTList<NeuritecreationBM>;
+  };
+
   BDM_CTPARAM_FOR(experimental::neuroscience, NeuriteElement) {
-    using BiologyModules =
-        CTList<NeuriteElongationBM>;
+    using BiologyModules = CTList<NeuriteElongationBM>;
   };
 };
 
@@ -65,9 +96,12 @@ inline int Simulate(int argc, const char** argv) {
 
   Simulation<> simulation(argc, argv, set_param);
 
-  experimental::neuroscience::NeuronSoma soma({75,75,10});
-  auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
-  ne->AddBiologyModule(NeuriteElongationBM());
+  auto* rm = simulation.GetResourceManager();
+  std::array<double, 3> pos = {75,75,10};
+  auto&& soma = rm->New<experimental::neuroscience::NeuronSoma>(pos);
+  soma.SetDiameter(10);
+  // auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
+  // ne->AddBiologyModule(NeuriteElongationBM());
 
   simulation.GetScheduler()->Simulate(100);
 
