@@ -43,12 +43,12 @@ struct NeuriteElongationBM : public BaseBiologyModule {
   ClassDefNV(NeuriteElongationBM, 1);
 };
 
-struct NeuritecreationBM: public BaseBiologyModule {
-  NeuritecreationBM() : BaseBiologyModule(gAllEventIds) {}
+struct NeuriteCreationBM: public BaseBiologyModule {
+  NeuriteCreationBM() : BaseBiologyModule(gAllEventIds) {}
 
   /// Default event constructor
   template <typename TEvent, typename TBm>
-  NeuritecreationBM(const TEvent& event, TBm* other, uint64_t new_oid = 0) {}
+  NeuriteCreationBM(const TEvent& event, TBm* other, uint64_t new_oid = 0) {}
 
   template <typename TEvent, typename... TBms>
   void EventHandler(const TEvent&, TBms*...) {}
@@ -65,7 +65,7 @@ struct NeuritecreationBM: public BaseBiologyModule {
 
 private:
   bool init_ = false;
-  ClassDefNV(NeuritecreationBM, 1);
+  ClassDefNV(NeuriteCreationBM, 1);
 };
 
 
@@ -77,7 +77,7 @@ BDM_CTPARAM(experimental::neuroscience) {
     experimental::neuroscience::NeuriteElement>;
 
   BDM_CTPARAM_FOR(experimental::neuroscience, NeuronSoma) {
-    using BiologyModules = CTList<NeuritecreationBM>;
+    using BiologyModules = CTList<NeuriteCreationBM>;
   };
 
   BDM_CTPARAM_FOR(experimental::neuroscience, NeuriteElement) {
@@ -100,6 +100,7 @@ inline int Simulate(int argc, const char** argv) {
   std::array<double, 3> pos = {75,75,10};
   auto&& soma = rm->New<experimental::neuroscience::NeuronSoma>(pos);
   soma.SetDiameter(10);
+  soma.AddBiologyModule(NeuriteCreationBM());
   // auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
   // ne->AddBiologyModule(NeuriteElongationBM());
 
