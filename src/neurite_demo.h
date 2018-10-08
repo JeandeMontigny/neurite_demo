@@ -21,15 +21,66 @@ namespace bdm {
 
 using namespace std;
 
+BDM_SIM_OBJECT(MyCell, experimental::neuroscience::NeuronSoma) {
+  BDM_SIM_OBJECT_HEADER(MyCellExt, 1, foo_);
+
+ public:
+  MyCellExt() {}
+
+  MyCellExt(const array<double, 3>& position) : Base(position) {}
+
+  /// Default event constructor
+  template <typename TEvent, typename TOther>
+  MyCellExt(const TEvent& event, TOther* other, uint64_t new_oid = 0)  : Base(event, other, new_oid) {
+  }
+
+  /// Default event handler (exising biology module won't be modified on
+  /// any event)
+  template <typename TEvent, typename... TOthers>
+  void EventHandler(const TEvent& event, TOthers*... others) {
+    Base::EventHandler(event, others...);
+  }
+
+  vec<int> foo_;
+  };
+
+
+BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
+  BDM_SIM_OBJECT_HEADER(MyNeuriteExt, 1, foo_);
+
+ public:
+  MyNeuriteExt() {}
+  MyNeuriteExt(const array<double, 3>& position) : Base(position) {}
+
+  using NeuronSoma = typename TCompileTimeParam::NeuronSoma;
+  using NeuronSomaSoPtr = ToSoPtr<NeuronSoma>;
+
+  /// Default event constructor
+  template <typename TEvent, typename TOther>
+  MyNeuriteExt(const TEvent& event, TOther* other, uint64_t new_oid = 0) : Base(event, other, new_oid) {
+  }
+
+  /// Default event handler (exising biology module won't be modified on
+  /// any event)
+  template <typename TEvent, typename... TOthers>
+  void EventHandler(const TEvent& event, TOthers*... others) {
+    Base::EventHandler(event, others...);
+  }
+
+  vec<int> foo_;
+  };
+
 struct NeuriteElongationBM : public BaseBiologyModule {
   NeuriteElongationBM() : BaseBiologyModule(gAllEventIds) {}
 
   /// Default event constructor
   template <typename TEvent, typename TBm>
-  NeuriteElongationBM(const TEvent& event, TBm* other, uint64_t new_oid = 0) {}
+  NeuriteElongationBM(const TEvent& event, TBm* other, uint64_t new_oid = 0) : BaseBiologyModule(event, other, new_oid) {}
 
   template <typename TEvent, typename... TBms>
-  void EventHandler(const TEvent&, TBms*...) {}
+  void EventHandler(const TEvent& event, TBms*... others) {
+    BaseBiologyModule::EventHandler(event, others...);
+  }
 
   // template <typename TOther>
   // NeuriteElementExt(const experimental::neuroscience::NewNeuriteExtensionEvent& event, TOther* other, uint64_t new_oid = 0) {}
@@ -44,7 +95,7 @@ struct NeuriteElongationBM : public BaseBiologyModule {
 };
 
 struct NeuriteCreationBM: public BaseBiologyModule {
-  NeuriteCreationBM() : BaseBiologyModule(gAllEventIds) {}
+  NeuriteCreationBM() : BaseBiologyModule(gNullEventId) {}
 
   /// Default event constructor
   template <typename TEvent, typename TBm>
@@ -73,14 +124,18 @@ private:
 BDM_CTPARAM(experimental::neuroscience) {
   BDM_CTPARAM_HEADER(experimental::neuroscience);
 
-  using SimObjectTypes = CTList<experimental::neuroscience::NeuronSoma,
-    experimental::neuroscience::NeuriteElement>;
+  using NeuronSoma = MyCell;
+  using NeuriteElement = MyNeurite;
 
-  BDM_CTPARAM_FOR(experimental::neuroscience, NeuronSoma) {
+  using SimObjectTypes = CTList<MyCell, MyNeurite>;
+  // using SimObjectTypes = CTList<MyCell, experimental::neuroscience::NeuriteElement>;
+
+  BDM_CTPARAM_FOR(bdm, MyCell) {
     using BiologyModules = CTList<NeuriteCreationBM>;
   };
 
-  BDM_CTPARAM_FOR(experimental::neuroscience, NeuriteElement) {
+  BDM_CTPARAM_FOR(bdm, MyNeurite) {
+  // BDM_CTPARAM_FOR(experimental::neuroscience, NeuriteElement) {
     using BiologyModules = CTList<NeuriteElongationBM>;
   };
 };
@@ -98,13 +153,20 @@ inline int Simulate(int argc, const char** argv) {
 
   auto* rm = simulation.GetResourceManager();
   std::array<double, 3> pos = {75,75,10};
-  auto&& soma = rm->New<experimental::neuroscience::NeuronSoma>(pos);
+  auto&& soma = rm->New<MyCell>(pos);
   soma.SetDiameter(10);
   soma.AddBiologyModule(NeuriteCreationBM());
   // auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
   // ne->AddBiologyModule(NeuriteElongationBM());
 
-  simulation.GetScheduler()->Simulate(100);
+  // for(int i = 0; i < 1000; i++) {
+  simulation.GetScheduler()->Simulate(319);
+    // rm->ApplyOnElement(SoHandle(1, 0), [](auto&& ne) {
+    //   if(ne.template IsSoType<NeuriteElement>()) {
+    //     ne.template ReinterpretCast<NeuriteElement>().RunDiscretization();
+    //   }
+    // });
+  // }
 
   return 0;
 }

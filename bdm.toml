@@ -3,11 +3,12 @@ run_mechanical_interactions = true
 
 [visualization]
 export = true
-live = true
+live = false
 export_interval = 1
 
     [[visualize_sim_object]]
-    name = "NeuriteElement"
+    # name = "NeuriteElement"
+    name = "MyNeurite"
 
     [[visualize_sim_object]]
-    name = "NeuronSoma"
+    name = "MyCell"
