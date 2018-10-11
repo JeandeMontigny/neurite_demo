@@ -70,6 +70,7 @@ BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
   vec<int> foo_;
   };
 
+
 struct NeuriteElongationBM : public BaseBiologyModule {
   NeuriteElongationBM() : BaseBiologyModule(gAllEventIds) {}
 
@@ -82,17 +83,19 @@ struct NeuriteElongationBM : public BaseBiologyModule {
     BaseBiologyModule::EventHandler(event, others...);
   }
 
-  // template <typename TOther>
-  // NeuriteElementExt(const experimental::neuroscience::NewNeuriteExtensionEvent& event, TOther* other, uint64_t new_oid = 0) {}
-
   template <typename T, typename TSimulation = Simulation<>>
   void Run(T* ne) {
-    // auto* sim = TSimulation::GetActive();
-    ne->ElongateTerminalEnd(10, {0, 0, 1});
+    auto* sim = TSimulation::GetActive();
+    auto* random = sim->GetRandom();
+    ne->ElongateTerminalEnd(10, {random->Uniform(-1, 1), random->Uniform(-1, 1), 1});
+    if (ne->IsTerminal() && random->Uniform() < 0.001) {
+      ne->Bifurcate();
+    }
   }
 
   ClassDefNV(NeuriteElongationBM, 1);
 };
+
 
 struct NeuriteCreationBM: public BaseBiologyModule {
   NeuriteCreationBM() : BaseBiologyModule(gNullEventId) {}
@@ -108,8 +111,11 @@ struct NeuriteCreationBM: public BaseBiologyModule {
   void Run(T* soma) {
 
     if (!init_) {
-      auto&& ne = soma->ExtendNewNeurite({0, 0, 1});
-      ne->AddBiologyModule(NeuriteElongationBM());
+      //TODO: multiple neurite creation crash
+      for (int i = 0; i < 1; i++) {
+        auto&& ne = soma->ExtendNewNeurite({0, 0, 1});
+        ne->AddBiologyModule(NeuriteElongationBM());
+      }
       init_ = true;
     }
   }
@@ -144,29 +150,19 @@ BDM_CTPARAM(experimental::neuroscience) {
 inline int Simulate(int argc, const char** argv) {
 
   auto set_param = [&](auto* param) {
-    param->bound_space_ = true;
-    param->min_bound_ = 0;
-    param->max_bound_ = 150;
+    param->neurite_min_length_ = 1.0;
+    param->neurite_max_length_ = 2.0;
   };
 
   Simulation<> simulation(argc, argv, set_param);
 
   auto* rm = simulation.GetResourceManager();
-  std::array<double, 3> pos = {75,75,10};
+  std::array<double, 3> pos = {0,0,0};
   auto&& soma = rm->New<MyCell>(pos);
   soma.SetDiameter(10);
   soma.AddBiologyModule(NeuriteCreationBM());
-  // auto&& ne = soma.ExtendNewNeurite({0, 0, 1});
-  // ne->AddBiologyModule(NeuriteElongationBM());
 
-  // for(int i = 0; i < 1000; i++) {
-  simulation.GetScheduler()->Simulate(319);
-    // rm->ApplyOnElement(SoHandle(1, 0), [](auto&& ne) {
-    //   if(ne.template IsSoType<NeuriteElement>()) {
-    //     ne.template ReinterpretCast<NeuriteElement>().RunDiscretization();
-    //   }
-    // });
-  // }
+  simulation.GetScheduler()->Simulate(100);
 
   return 0;
 }
