@@ -72,7 +72,12 @@ BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
 
 
 struct NeuriteElongationBM : public BaseBiologyModule {
-  NeuriteElongationBM() : BaseBiologyModule(gAllEventIds) {}
+  NeuriteElongationBM() : BaseBiologyModule(
+      // gAllEventIds
+      {experimental::neuroscience::NeuriteBifurcationEvent::kEventId}
+      // {experimental::neuroscience::NeuriteBifurcationEvent::kEventId,
+      // experimental::neuroscience::NeuriteBranchingEvent::kEventId}
+    ) {}
 
   /// Default event constructor
   template <typename TEvent, typename TBm>
@@ -87,8 +92,8 @@ struct NeuriteElongationBM : public BaseBiologyModule {
   void Run(T* ne) {
     auto* sim = TSimulation::GetActive();
     auto* random = sim->GetRandom();
-    ne->ElongateTerminalEnd(10, {random->Uniform(-1, 1), random->Uniform(-1, 1), 1});
-    if (ne->IsTerminal() && random->Uniform() < 0.001) {
+    ne->ElongateTerminalEnd(100, {random->Uniform(-1, 1), random->Uniform(-1, 1), 1});
+    if (ne->IsTerminal() && random->Uniform() < 0.01) {
       ne->Bifurcate();
     }
   }
@@ -150,7 +155,6 @@ BDM_CTPARAM(experimental::neuroscience) {
 inline int Simulate(int argc, const char** argv) {
 
   auto set_param = [&](auto* param) {
-    param->neurite_min_length_ = 1.0;
     param->neurite_max_length_ = 2.0;
   };
 
@@ -162,7 +166,7 @@ inline int Simulate(int argc, const char** argv) {
   soma.SetDiameter(10);
   soma.AddBiologyModule(NeuriteCreationBM());
 
-  simulation.GetScheduler()->Simulate(100);
+  simulation.GetScheduler()->Simulate(500);
 
   return 0;
 }
