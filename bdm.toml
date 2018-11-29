@@ -7,7 +7,6 @@ live = false
 export_interval = 1
 
     [[visualize_sim_object]]
-    # name = "NeuriteElement"
     name = "MyNeurite"
 
     [[visualize_sim_object]]
