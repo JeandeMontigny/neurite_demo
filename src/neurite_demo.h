@@ -23,6 +23,33 @@ namespace bdm {
 
 enum Substances { substance_apical, substance_basal };
 
+// Define my custom cell MyCell extending NeuronSoma
+BDM_SIM_OBJECT(MyCell, experimental::neuroscience::NeuronSoma) {
+  BDM_SIM_OBJECT_HEADER(MyCell, experimental::neuroscience::NeuronSoma, 1, labelSWC_);
+
+ public:
+  MyCellExt() {}
+  MyCellExt(const array<double, 3>& position) : Base(position) {}
+
+  /// Default event constructor
+  template <typename TEvent, typename TOther>
+  MyCellExt(const TEvent& event, TOther* other, uint64_t new_oid = 0)
+    : Base(event, other, new_oid) {}
+
+  /// Default event handler
+  template <typename TEvent, typename... TOthers>
+  void EventHandler(const TEvent& event, TOthers*... others) {
+    Base::EventHandler(event, others...);
+  }
+
+  inline void SetLabel(int label) { labelSWC_[kIdx] = label; }
+  inline int GetLabel() const { return labelSWC_[kIdx]; }
+  inline void IncreaseLabel() { labelSWC_[kIdx] = labelSWC_[kIdx] + 1; }
+
+ private:
+  vec<int> labelSWC_;
+};
+
 // Define my custom neurite MyNeurite, which extends NeuriteElement
 BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
   BDM_SIM_OBJECT_HEADER(MyNeurite, experimental::neuroscience::NeuriteElement, 1, can_branch_);
@@ -47,6 +74,21 @@ BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
 
  private:
   vec<bool> can_branch_;
+};
+
+struct Soma_BM : public BaseBiologyModule {
+  Soma_BM() : BaseBiologyModule(gAllEventIds) {}
+
+  /// Default event constructor
+  template <typename TEvent, typename TBm>
+  Soma_BM(const TEvent& event, TBm* other, uint64_t new_oid = 0)
+      : BaseBiologyModule(event, other, new_oid) {}
+
+  template <typename T, typename TSimulation = Simulation<>>
+    void Run(T* soma) {}
+
+  private:
+    ClassDefNV(Soma_BM, 1);
 };
 
 struct ApicalElongation_BM : public BaseBiologyModule {
@@ -174,14 +216,101 @@ struct BasalElongation_BM : public BaseBiologyModule {
   ClassDefNV(BasalElongation_BM, 1);
 };  // end BasalElongation_BM
 
+
+template <typename TSimulation = Simulation<>>
+inline void morpho_exporteur() {
+  auto* sim = TSimulation::GetActive();
+  auto* rm = sim->GetResourceManager();
+  auto* param = sim->GetParam();
+  int seed = sim->GetRandom()->GetSeed();
+
+  rm->ApplyOnAllElements([&](auto&& so, SoHandle) {
+    if (so->template IsSoType<MyCell>()) {
+      auto&& cell = so.template ReinterpretCast<MyCell>();
+      int thisCellType = cell.GetCellType();
+      auto cellPosition = cell.GetPosition();
+      ofstream swcFile;
+      string swcFileName = Concat("./cell", cell.GetUid(),
+                                  "_type", thisCellType, "_seed", seed, ".swc")
+                               .c_str();
+      swcFile.open(swcFileName);
+      cell->SetLabel(1);
+      // swcFile << labelSWC_ << " 1 " << cellPosition[0] << " "
+      //         << cellPosition[1]  << " " << cellPosition[2] << " "
+      //         << cell->GetDiameter()/2 << " -1";
+      swcFile << cell->GetLabel() << " 1 0 0 0 " << cell->GetDiameter() / 2
+              << " -1";
+
+      for (auto& ne : cell->GetDaughters()) {
+        swcFile << swc_neurites(ne, 1, cellPosition);
+      }  // end for neurite in cell
+      swcFile.close();
+    }
+  });  // end for cell in simulation
+  std::cout << "swc export done" << std::endl;
+}  // end morpho_exporteur
+
+
+template <typename T>
+inline string swc_neurites(T ne, int labelParent,
+                           array<double, 3> somaPosition) {
+  array<double, 3> nePosition = ne->GetPosition();
+  nePosition[0] = nePosition[0] - somaPosition[0];
+  nePosition[1] = nePosition[1] - somaPosition[1];
+  nePosition[2] = nePosition[2] - somaPosition[2];
+  string temps;
+
+  ne->GetMySoma()->IncreaseLabel();
+  // set explicitly the value of GetLabel() other wise it is not properly set
+  int currentLabel = ne->GetMySoma()->GetLabel();
+
+  // if branching point
+  if (ne->GetDaughterRight() != nullptr) {
+    // FIXME: segment indice should be 5, no 3. If set here,
+    // it's not the actual branching point, but the following segment
+    // need to run correction.py to correct file
+    temps =
+        Concat(temps, "\n", currentLabel, " 3 ", nePosition[0], " ",
+               nePosition[1], " ", nePosition[2], " ", ne->GetDiameter() / 2,
+               " ", labelParent,
+               swc_neurites(ne->GetDaughterRight(), currentLabel, somaPosition))
+            .c_str();
+    ne->GetMySoma()->IncreaseLabel();
+  }
+  // if is straigh dendrite
+  // need to update currentLabel
+  currentLabel = ne->GetMySoma()->GetLabel();
+  if (ne->GetDaughterLeft() != nullptr) {
+    temps =
+        Concat(temps, "\n", currentLabel, " 3 ", nePosition[0], " ",
+               nePosition[1], " ", nePosition[2], " ", ne->GetDiameter() / 2,
+               " ", labelParent,
+               swc_neurites(ne->GetDaughterLeft(), currentLabel, somaPosition))
+            .c_str();
+  }
+  // if ending point
+  if (ne->GetDaughterLeft() == nullptr && ne->GetDaughterRight() == nullptr) {
+    temps = Concat(temps, "\n", currentLabel, " 6 ", nePosition[0], " ",
+                   nePosition[1], " ", nePosition[2], " ",
+                   ne->GetDiameter() / 2, " ", labelParent)
+                .c_str();
+  }
+
+  return temps;
+} // end swc_neurites
+
+
 // Define compile time parameter
 BDM_CTPARAM(experimental::neuroscience) {
   BDM_CTPARAM_HEADER(experimental::neuroscience);
 
+  using NeuronSoma = MyCell;
   using NeuriteElement = MyNeurite;
+  using SimObjectTypes = CTList<MyCell, MyNeurite>;
 
-  using SimObjectTypes =
-      CTList<experimental::neuroscience::NeuronSoma, bdm::MyNeurite>;
+  BDM_CTPARAM_FOR(bdm, MyCell) {
+    using BiologyModules = CTList<Soma_BM>;
+  };
 
   BDM_CTPARAM_FOR(bdm, MyNeurite) {
     using BiologyModules = CTList<ApicalElongation_BM, BasalElongation_BM>;
@@ -206,7 +335,7 @@ inline int Simulate(int argc, const char** argv) {
   random->SetSeed(8794);
 
   auto neuron_builder = [&rm](const std::array<double, 3>& position) {
-    experimental::neuroscience::NeuronSoma soma(position);
+    MyCell soma(position);
     soma.SetDiameter(10);
     auto soma_soptr = soma.GetSoPtr();
     rm->push_back(soma);
