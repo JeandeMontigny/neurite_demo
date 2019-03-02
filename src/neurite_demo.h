@@ -76,20 +76,6 @@ BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
   vec<bool> can_branch_;
 };
 
-struct Soma_BM : public BaseBiologyModule {
-  Soma_BM() : BaseBiologyModule(gAllEventIds) {}
-
-  /// Default event constructor
-  template <typename TEvent, typename TBm>
-  Soma_BM(const TEvent& event, TBm* other, uint64_t new_oid = 0)
-      : BaseBiologyModule(event, other, new_oid) {}
-
-  template <typename T, typename TSimulation = Simulation<>>
-    void Run(T* soma) {}
-
-  private:
-    ClassDefNV(Soma_BM, 1);
-};
 
 struct ApicalElongation_BM : public BaseBiologyModule {
   ApicalElongation_BM() : BaseBiologyModule(gAllEventIds) {}
@@ -309,7 +295,7 @@ BDM_CTPARAM(experimental::neuroscience) {
   using SimObjectTypes = CTList<MyCell, MyNeurite>;
 
   BDM_CTPARAM_FOR(bdm, MyCell) {
-    using BiologyModules = CTList<Soma_BM>;
+    using BiologyModules = CTList<NullBiologyModule>;
   };
 
   BDM_CTPARAM_FOR(bdm, MyNeurite) {
