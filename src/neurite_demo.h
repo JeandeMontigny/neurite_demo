@@ -23,11 +23,12 @@ namespace bdm {
 
 enum Substances { substance_apical, substance_basal };
 
-// Define my custom cell MyCell extending NeuronSoma
+// Define my custom cell object MyCell extending NeuronSoma
 BDM_SIM_OBJECT(MyCell, experimental::neuroscience::NeuronSoma) {
   BDM_SIM_OBJECT_HEADER(MyCell, experimental::neuroscience::NeuronSoma, 1, labelSWC_);
 
  public:
+  // creators
   MyCellExt() {}
   MyCellExt(const array<double, 3>& position) : Base(position) {}
 
@@ -42,11 +43,16 @@ BDM_SIM_OBJECT(MyCell, experimental::neuroscience::NeuronSoma) {
     Base::EventHandler(event, others...);
   }
 
+  // define my custom functions for MyCell
+  // set labelSWC_ to specified value
   inline void SetLabel(int label) { labelSWC_[kIdx] = label; }
+  // return labelSWC_ value
   inline int GetLabel() const { return labelSWC_[kIdx]; }
+  // increase by 1 the value of labelSWC_
   inline void IncreaseLabel() { labelSWC_[kIdx] = labelSWC_[kIdx] + 1; }
 
  private:
+  // new attribure for MyCell
   vec<int> labelSWC_;
 };
 
@@ -55,6 +61,7 @@ BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
   BDM_SIM_OBJECT_HEADER(MyNeurite, experimental::neuroscience::NeuriteElement, 1, can_branch_);
 
  public:
+  // creators
   MyNeuriteExt() {}
   MyNeuriteExt(const array<double, 3>& position) : Base(position) {}
 
@@ -69,14 +76,19 @@ BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
     Base::EventHandler(event, others...);
   }
 
+  // define my custom functions for MyNeurite
+  // set can_branch_ to specified bool
   void SetCanBranch(int b) { can_branch_[kIdx] = b; }
+  // return can_branch_ value
   bool GetCanBranch() const { return can_branch_[kIdx]; }
 
  private:
+  // new attribure for MyNeurite
   vec<bool> can_branch_;
 };
 
 
+// define BiologyModule. here, behaviour of apical dendrites
 struct ApicalElongation_BM : public BaseBiologyModule {
   ApicalElongation_BM() : BaseBiologyModule(gAllEventIds) {}
 
@@ -87,26 +99,31 @@ struct ApicalElongation_BM : public BaseBiologyModule {
 
   // TODO: don't copy BM when split (elongate)
 
+  // define Run() method, that will be called at each time step
   template <typename T, typename TSimulation = Simulation<>>
   void Run(T* dendrite) {
     auto* sim = TSimulation::GetActive();
     auto* random = sim->GetRandom();
     auto* rm = sim->GetResourceManager();
 
+    // if diffusion grid hasn't been initialised
     if (!init_) {
+      // initialised diffusion grid
       dg_guide_ = rm->GetDiffusionGrid("substance_apical");
       init_ = true;
     }
 
+    // if the dendrite diameter is higher than 0.5
     if (dendrite->GetDiameter() > 0.5) {
       array<double, 3> gradient;
+      // get gradient at dendrite position
       dg_guide_->GetGradient(dendrite->GetPosition(), &gradient);
-      // double concentration = 0;
 
+      // define some parameters for next step direction
       double gradientWeight = 0.04;
       double randomnessWeight = 0.3;
       double oldDirectionWeight = 3;
-
+      // define a random direction
       array<double, 3> random_axis = {random->Uniform(-1, 1),
                                       random->Uniform(-1, 1),
                                       random->Uniform(-1, 1)};
@@ -115,23 +132,32 @@ struct ApicalElongation_BM : public BaseBiologyModule {
       auto gradDirection = Math::ScalarMult(gradientWeight, gradient);
       auto randomDirection = Math::ScalarMult(randomnessWeight, random_axis);
 
+      // calculate step direction
       array<double, 3> newStepDirection =
           Math::Add(Math::Add(oldDirection, randomDirection), gradDirection);
 
+      // actually elongate the dendrite in new step direction
       dendrite->ElongateTerminalEnd(25, newStepDirection);
-      dendrite->SetDiameter(dendrite->GetDiameter() - 0.001);
+      // reduce neurite diameter as it elongates
+      dendrite->SetDiameter(dendrite->GetDiameter() - 0.0002);
 
+      // if the dendrite can branch and is a terminal segment
       if (dendrite->GetCanBranch() && dendrite->IsTerminal() &&
           random->Uniform() < 0.033) {
+        // define a random direction
         auto rand_noise = random->template UniformArray<3>(-0.1, 0.1);
+        // calculate new direction
         array<double, 3> branchDirection = Math::Add(
             Math::Perp3(Math::Add(dendrite->GetUnitaryAxisDirectionVector(),
                                   rand_noise),
                         random->Uniform(0, 1)),
             dendrite->GetSpringAxis());
+        // branch neurite 1, and get its new daugher, dendrite_2
         auto dendrite_2 = dendrite->Branch(branchDirection);
+        // set values for this new dendrite
         dendrite_2->SetCanBranch(false);
-        dendrite_2->SetDiameter(0.65);
+        // set diameter of daugher to diameter of it's mother
+        dendrite_2->SetDiameter(dendrite->GetDiameter());
       }
 
     }  // end if diameter
@@ -143,6 +169,7 @@ struct ApicalElongation_BM : public BaseBiologyModule {
   ClassDefNV(ApicalElongation_BM, 1);
 };  // end ApicalElongation_BM
 
+// define BiologyModule. here, behaviour of basal dendrites
 struct BasalElongation_BM : public BaseBiologyModule {
   BasalElongation_BM() : BaseBiologyModule(gAllEventIds) {}
 
@@ -167,7 +194,6 @@ struct BasalElongation_BM : public BaseBiologyModule {
     if (dendrite->IsTerminal() && dendrite->GetDiameter() > 0.75) {
       array<double, 3> gradient;
       dg_guide_->GetGradient(dendrite->GetPosition(), &gradient);
-      // double concentration = 0;
 
       double gradientWeight = 0.02;
       double randomnessWeight = 0.5;
@@ -203,6 +229,7 @@ struct BasalElongation_BM : public BaseBiologyModule {
 };  // end BasalElongation_BM
 
 
+// define morpho_exporteur for neuron morphology export in swc format
 template <typename TSimulation = Simulation<>>
 inline void morpho_exporteur() {
   auto* sim = TSimulation::GetActive();
@@ -318,7 +345,7 @@ inline int Simulate(int argc, const char** argv) {
   auto* param = simulation.GetParam();
   auto* random = simulation.GetRandom();
 
-  random->SetSeed(8794);
+  random->SetSeed(random->Uniform(0, 1e8));
 
   auto neuron_builder = [&rm](const std::array<double, 3>& position) {
     MyCell soma(position);
