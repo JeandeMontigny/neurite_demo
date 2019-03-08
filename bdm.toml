@@ -10,7 +10,7 @@ live = false
 export_interval = 1
 
     [[visualize_sim_object]]
-    name = "MyCell"
+    name = "NeuronSoma"
 
     [[visualize_sim_object]]
     name = "MyNeurite"

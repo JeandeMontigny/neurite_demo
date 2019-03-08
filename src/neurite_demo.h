@@ -21,40 +21,8 @@ using namespace std;
 
 namespace bdm {
 
+// enumerate substance in simulation
 enum Substances { substance_apical, substance_basal };
-
-// Define my custom cell object MyCell extending NeuronSoma
-BDM_SIM_OBJECT(MyCell, experimental::neuroscience::NeuronSoma) {
-  BDM_SIM_OBJECT_HEADER(MyCell, experimental::neuroscience::NeuronSoma, 1, labelSWC_);
-
- public:
-  // creators
-  MyCellExt() {}
-  MyCellExt(const array<double, 3>& position) : Base(position) {}
-
-  /// Default event constructor
-  template <typename TEvent, typename TOther>
-  MyCellExt(const TEvent& event, TOther* other, uint64_t new_oid = 0)
-    : Base(event, other, new_oid) {}
-
-  /// Default event handler
-  template <typename TEvent, typename... TOthers>
-  void EventHandler(const TEvent& event, TOthers*... others) {
-    Base::EventHandler(event, others...);
-  }
-
-  // define my custom functions for MyCell
-  // set labelSWC_ to specified value
-  inline void SetLabel(int label) { labelSWC_[kIdx] = label; }
-  // return labelSWC_ value
-  inline int GetLabel() const { return labelSWC_[kIdx]; }
-  // increase by 1 the value of labelSWC_
-  inline void IncreaseLabel() { labelSWC_[kIdx] = labelSWC_[kIdx] + 1; }
-
- private:
-  // new attribure for MyCell
-  vec<int> labelSWC_;
-};
 
 // Define my custom neurite MyNeurite, which extends NeuriteElement
 BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
@@ -229,101 +197,12 @@ struct BasalElongation_BM : public BaseBiologyModule {
 };  // end BasalElongation_BM
 
 
-// define morpho_exporteur for neuron morphology export in swc format
-template <typename TSimulation = Simulation<>>
-inline void morpho_exporteur() {
-  auto* sim = TSimulation::GetActive();
-  auto* rm = sim->GetResourceManager();
-  auto* param = sim->GetParam();
-  int seed = sim->GetRandom()->GetSeed();
-
-  rm->ApplyOnAllElements([&](auto&& so, SoHandle) {
-    if (so->template IsSoType<MyCell>()) {
-      auto&& cell = so.template ReinterpretCast<MyCell>();
-      int thisCellType = cell.GetCellType();
-      auto cellPosition = cell.GetPosition();
-      ofstream swcFile;
-      string swcFileName = Concat("./cell", cell.GetUid(),
-                                  "_type", thisCellType, "_seed", seed, ".swc")
-                               .c_str();
-      swcFile.open(swcFileName);
-      cell->SetLabel(1);
-      // swcFile << labelSWC_ << " 1 " << cellPosition[0] << " "
-      //         << cellPosition[1]  << " " << cellPosition[2] << " "
-      //         << cell->GetDiameter()/2 << " -1";
-      swcFile << cell->GetLabel() << " 1 0 0 0 " << cell->GetDiameter() / 2
-              << " -1";
-
-      for (auto& ne : cell->GetDaughters()) {
-        swcFile << swc_neurites(ne, 1, cellPosition);
-      }  // end for neurite in cell
-      swcFile.close();
-    }
-  });  // end for cell in simulation
-  std::cout << "swc export done" << std::endl;
-}  // end morpho_exporteur
-
-
-template <typename T>
-inline string swc_neurites(T ne, int labelParent,
-                           array<double, 3> somaPosition) {
-  array<double, 3> nePosition = ne->GetPosition();
-  nePosition[0] = nePosition[0] - somaPosition[0];
-  nePosition[1] = nePosition[1] - somaPosition[1];
-  nePosition[2] = nePosition[2] - somaPosition[2];
-  string temps;
-
-  ne->GetMySoma()->IncreaseLabel();
-  // set explicitly the value of GetLabel() other wise it is not properly set
-  int currentLabel = ne->GetMySoma()->GetLabel();
-
-  // if branching point
-  if (ne->GetDaughterRight() != nullptr) {
-    // FIXME: segment indice should be 5, no 3. If set here,
-    // it's not the actual branching point, but the following segment
-    // need to run correction.py to correct file
-    temps =
-        Concat(temps, "\n", currentLabel, " 3 ", nePosition[0], " ",
-               nePosition[1], " ", nePosition[2], " ", ne->GetDiameter() / 2,
-               " ", labelParent,
-               swc_neurites(ne->GetDaughterRight(), currentLabel, somaPosition))
-            .c_str();
-    ne->GetMySoma()->IncreaseLabel();
-  }
-  // if is straigh dendrite
-  // need to update currentLabel
-  currentLabel = ne->GetMySoma()->GetLabel();
-  if (ne->GetDaughterLeft() != nullptr) {
-    temps =
-        Concat(temps, "\n", currentLabel, " 3 ", nePosition[0], " ",
-               nePosition[1], " ", nePosition[2], " ", ne->GetDiameter() / 2,
-               " ", labelParent,
-               swc_neurites(ne->GetDaughterLeft(), currentLabel, somaPosition))
-            .c_str();
-  }
-  // if ending point
-  if (ne->GetDaughterLeft() == nullptr && ne->GetDaughterRight() == nullptr) {
-    temps = Concat(temps, "\n", currentLabel, " 6 ", nePosition[0], " ",
-                   nePosition[1], " ", nePosition[2], " ",
-                   ne->GetDiameter() / 2, " ", labelParent)
-                .c_str();
-  }
-
-  return temps;
-} // end swc_neurites
-
-
 // Define compile time parameter
 BDM_CTPARAM(experimental::neuroscience) {
   BDM_CTPARAM_HEADER(experimental::neuroscience);
 
-  using NeuronSoma = MyCell;
   using NeuriteElement = MyNeurite;
-  using SimObjectTypes = CTList<MyCell, MyNeurite>;
-
-  BDM_CTPARAM_FOR(bdm, MyCell) {
-    using BiologyModules = CTList<NullBiologyModule>;
-  };
+  using SimObjectTypes = CTList<experimental::neuroscience::NeuronSoma, MyNeurite>;
 
   BDM_CTPARAM_FOR(bdm, MyNeurite) {
     using BiologyModules = CTList<ApicalElongation_BM, BasalElongation_BM>;
@@ -331,24 +210,32 @@ BDM_CTPARAM(experimental::neuroscience) {
 
 };  // end BDM_CTPARAM
 
+// main function, called by neurite_demo.cc
 inline int Simulate(int argc, const char** argv) {
-  uint64_t num_cells = 1;
+
+  // define some parameters for simulation
   auto set_param = [&](auto* param) {
+    // our simulation will have boundaries
     param->bound_space_ = true;
+    // set boundaries values
     param->min_bound_ = -200;
     param->max_bound_ = 200;
+    // max length for neurite segments
     param->neurite_max_length_ = 2.0;
   };
 
+  // create and initialised the simulation
   Simulation<> simulation(argc, argv, set_param);
   auto* rm = simulation.GetResourceManager();
   auto* param = simulation.GetParam();
   auto* random = simulation.GetRandom();
 
+  // set seed for random number generation
   random->SetSeed(random->Uniform(0, 1e8));
 
+  // define a lambda function for neuron creation
   auto neuron_builder = [&rm](const std::array<double, 3>& position) {
-    MyCell soma(position);
+    experimental::neuroscience::NeuronSoma soma(position);
     soma.SetDiameter(10);
     auto soma_soptr = soma.GetSoPtr();
     rm->push_back(soma);
@@ -367,17 +254,8 @@ inline int Simulate(int argc, const char** argv) {
     dendrite_basal3->AddBiologyModule(BasalElongation_BM());
   };
 
-  // neuron_builder({0, 0, 0});
-  // neuron_builder({20, 20, 0});
-  uint64_t cells_per_dim = std::sqrt(num_cells);
-  double space = 10;
-  for (size_t x = 0; x < cells_per_dim; x++) {
-      auto x_pos = x * space;
-      for (size_t y = 0; y < cells_per_dim; y++) {
-        auto y_pos = y * space;
-        neuron_builder({x_pos, y_pos, 0});
-      }
-  }
+  // call function for neuron creation
+  neuron_builder({0, 0, 0});
 
   // define substance for neurite attraction
   ModelInitializer::DefineSubstance(0, "substance_apical", 0, 0,
@@ -392,17 +270,12 @@ inline int Simulate(int argc, const char** argv) {
       1, "substance_basal", GaussianBand(param->min_bound_, 200, Axis::kZAxis));
 
   auto* scheduler = simulation.GetScheduler();
-  // substance initialization happens in first iteration - exclude it from
-  // runtime measurments
-  scheduler->Simulate(1);
 
-  auto start = Timing::Timestamp();
+  // simuate for 500 steps
   scheduler->Simulate(500);
-  auto stop = Timing::Timestamp();
-  std::cout << "RUNTIME " << (stop - start) << std::endl;
 
   std::cout << "Simulation completed successfully!" << std::endl;
-  std::cout << "num sim objects: " << rm->GetNumSimObjects() << std::endl;
+
   return 0;
 }  // end Simulate
 
