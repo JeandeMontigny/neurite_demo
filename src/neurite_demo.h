@@ -58,17 +58,28 @@ BDM_SIM_OBJECT(MyCell, experimental::neuroscience::NeuronSoma) {
 
 // Define my custom neurite MyNeurite, which extends NeuriteElement
 BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
-  BDM_SIM_OBJECT_HEADER(MyNeurite, experimental::neuroscience::NeuriteElement, 1, can_branch_);
+  BDM_SIM_OBJECT_HEADER(MyNeurite, experimental::neuroscience::NeuriteElement, 1,
+    can_branch_, its_soma_);
 
  public:
   // creators
   MyNeuriteExt() {}
   MyNeuriteExt(const array<double, 3>& position) : Base(position) {}
 
+  using NeuronSoma = typename TCompileTimeParam::NeuronSoma;
+  using NeuronSomaSoPtr = ToSoPtr<NeuronSoma>;
+
   /// Default event constructor
   template <typename TEvent, typename TOther>
-  MyNeuriteExt(const TEvent& event, TOther* other, uint64_t new_oid = 0)
-      : Base(event, other, new_oid) {}
+  MyNeuriteExt(const TEvent& event, TOther* other, uint64_t new_oid = 0) : Base(event, other, new_oid) {
+    its_soma_[kIdx] = other->its_soma_[other->kIdx];
+  }
+
+  template <typename TOther>
+  MyNeuriteExt(const experimental::neuroscience::NewNeuriteExtensionEvent& event,
+    TOther* other, uint64_t new_oid = 0) : Base(event, other, new_oid) {
+    its_soma_[kIdx] = other->GetSoPtr();
+}
 
   /// Default event handler
   template <typename TEvent, typename... TOthers>
@@ -82,9 +93,14 @@ BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
   // return can_branch_ value
   bool GetCanBranch() const { return can_branch_[kIdx]; }
 
+
+  void SetMySoma(NeuronSomaSoPtr soma) { its_soma_[kIdx] = soma; }
+  NeuronSomaSoPtr GetMySoma() { return its_soma_[kIdx]; }
+
  private:
   // new attribure for MyNeurite
   vec<bool> can_branch_;
+  vec<NeuronSomaSoPtr> its_soma_;
 };
 
 
@@ -234,20 +250,19 @@ template <typename TSimulation = Simulation<>>
 inline void morpho_exporteur() {
   auto* sim = TSimulation::GetActive();
   auto* rm = sim->GetResourceManager();
-  auto* param = sim->GetParam();
   int seed = sim->GetRandom()->GetSeed();
+
+  int cell_nb = 0;
 
   rm->ApplyOnAllElements([&](auto&& so, SoHandle) {
     if (so->template IsSoType<MyCell>()) {
       auto&& cell = so.template ReinterpretCast<MyCell>();
-      int thisCellType = cell.GetCellType();
       auto cellPosition = cell.GetPosition();
       ofstream swcFile;
-      string swcFileName = Concat("./cell", cell.GetUid(),
-                                  "_type", thisCellType, "_seed", seed, ".swc")
-                               .c_str();
+      string swcFileName = Concat("./cell", cell_nb,"_seed", seed, ".swc").c_str();
       swcFile.open(swcFileName);
       cell->SetLabel(1);
+      cell_nb++;
       // swcFile << labelSWC_ << " 1 " << cellPosition[0] << " "
       //         << cellPosition[1]  << " " << cellPosition[2] << " "
       //         << cell->GetDiameter()/2 << " -1";
@@ -345,7 +360,7 @@ inline int Simulate(int argc, const char** argv) {
   auto* param = simulation.GetParam();
   auto* random = simulation.GetRandom();
 
-  random->SetSeed(random->Uniform(0, 1e8));
+  random->SetSeed(random->Uniform(0, 1e6));
 
   auto neuron_builder = [&rm](const std::array<double, 3>& position) {
     MyCell soma(position);
@@ -356,15 +371,19 @@ inline int Simulate(int argc, const char** argv) {
     auto&& dendrite_apical = soma_soptr->ExtendNewNeurite({0, 0, 1});
     dendrite_apical->AddBiologyModule(ApicalElongation_BM());
     dendrite_apical->SetCanBranch(true);
+    dendrite_apical->SetMySoma(soma->GetSoPtr());
 
     auto&& dendrite_basal1 = soma_soptr->ExtendNewNeurite({0, 0, -1});
     dendrite_basal1->AddBiologyModule(BasalElongation_BM());
+    dendrite_basal1->SetMySoma(soma->GetSoPtr());
 
     auto&& dendrite_basal2 = soma_soptr->ExtendNewNeurite({0, 0.6, -0.8});
     dendrite_basal2->AddBiologyModule(BasalElongation_BM());
+    dendrite_basal2->SetMySoma(soma->GetSoPtr());
 
     auto&& dendrite_basal3 = soma_soptr->ExtendNewNeurite({0.3, -0.6, -0.8});
     dendrite_basal3->AddBiologyModule(BasalElongation_BM());
+    dendrite_basal3->SetMySoma(soma->GetSoPtr());
   };
 
   // neuron_builder({0, 0, 0});
@@ -400,6 +419,8 @@ inline int Simulate(int argc, const char** argv) {
   scheduler->Simulate(500);
   auto stop = Timing::Timestamp();
   std::cout << "RUNTIME " << (stop - start) << std::endl;
+
+  morpho_exporteur();
 
   std::cout << "Simulation completed successfully!" << std::endl;
   std::cout << "num sim objects: " << rm->GetNumSimObjects() << std::endl;
