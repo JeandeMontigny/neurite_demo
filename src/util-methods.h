@@ -17,7 +17,7 @@ namespace bdm {
         auto&& cell = so.template ReinterpretCast<MyCell>();
         auto cellPosition = cell.GetPosition();
         ofstream swcFile;
-        string swcFileName = Concat("./cell", cell_nb,"_seed", seed, ".swc").c_str();
+        string swcFileName = Concat("./output/cell", cell_nb,"_seed", seed, ".swc").c_str();
         swcFile.open(swcFileName);
         cell->SetLabel(1);
         cell_nb++;
