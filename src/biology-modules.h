@@ -20,21 +20,32 @@
 
 namespace bdm {
 
+// enumerate substances in simulation
 enum Substances { kSubstanceApical, kSubstanceBasal };
 
-struct ApicalElongationBM : public BaseBiologyModule {
-  ApicalElongationBM() : BaseBiologyModule(gAllEventIds) {}
+
+// ApicalElongation_BM
+struct ApicalElongation_BM : public BaseBiologyModule {
+  ApicalElongation_BM() : BaseBiologyModule(gAllEventIds) {}
 
   /// Default event constructor
-  template <typename TEvent, typename TBm>
-  ApicalElongationBM(const TEvent& event, TBm* other, uint64_t new_oid = 0)
+  ApicalElongation_BM(const Event& event, BaseBiologyModule* other,
+                      uint64_t new_oid = 0)
       : BaseBiologyModule(event, other, new_oid) {}
 
-  // TODO: don't copy BM when split (elongate)
+  /// Create a new instance of this object using the default constructor.
+  BaseBiologyModule* GetInstance(const Event& event, BaseBiologyModule* other,
+                                 uint64_t new_oid = 0) const override {
+    return new ApicalElongation_BM(event, other, new_oid);
+  }
 
-  template <typename T, typename TSimulation = Simulation<>>
-  void Run(T* dendrite) {
-    auto* sim = TSimulation::GetActive();
+  /// Create a copy of this biology module.
+  BaseBiologyModule* GetCopy() const override {
+    return new ApicalElongation_BM(*this);
+  }
+
+  void Run(SimObject* so) override {
+    auto* sim = Simulation::GetActive();
     auto* random = sim->GetRandom();
     auto* rm = sim->GetResourceManager();
 
@@ -43,36 +54,37 @@ struct ApicalElongationBM : public BaseBiologyModule {
       init_ = true;
     }
 
+    auto* dendrite = bdm_static_cast<MyNeurite*>(so);
     if (dendrite->GetDiameter() > 0.5) {
-      std::array<double, 3> gradient;
+      Double3 gradient;
       dg_guide_->GetGradient(dendrite->GetPosition(), &gradient);
+      // double concentration = 0;
 
-      double gradient_weight = 0.04;
+      double gradient_weight = 0.06;
       double randomness_weight = 0.3;
-      double old_direction_weight = 3;
+      double old_direction_weight = 4;
 
-      auto random_axis = random->template UniformArray<3>(-1, 1);
+      Double3 random_axis = {random->Uniform(-1, 1), random->Uniform(-1, 1),
+                             random->Uniform(-1, 1)};
+      auto old_direction = dendrite->GetSpringAxis() * old_direction_weight;
+      auto grad_direction = gradient * gradient_weight;
+      auto random_direction = random_axis * randomness_weight;
 
-      auto old_direction =
-          Math::ScalarMult(old_direction_weight, dendrite->GetSpringAxis());
-      auto grad_direction = Math::ScalarMult(gradient_weight, gradient);
-      auto random_direction = Math::ScalarMult(randomness_weight, random_axis);
+      Double3 new_step_direction =
+          old_direction + random_direction + grad_direction;
 
-      auto new_step_direction =
-          Math::Add(Math::Add(old_direction, random_direction), grad_direction);
-
-      dendrite->ElongateTerminalEnd(25, new_step_direction);
-      dendrite->SetDiameter(dendrite->GetDiameter() - 0.001);
+      dendrite->ElongateTerminalEnd(100, new_step_direction);
+      dendrite->SetDiameter(dendrite->GetDiameter() - 0.00071);
 
       if (dendrite->GetCanBranch() && dendrite->IsTerminal() &&
-          random->Uniform() < 0.033) {
+          dendrite->GetDiameter() > 0.55 && random->Uniform() < 0.030) {
         auto rand_noise = random->template UniformArray<3>(-0.1, 0.1);
-        auto branch_direction = Math::Add(
-            Math::Perp3(Math::Add(dendrite->GetUnitaryAxisDirectionVector(),
-                                  rand_noise),
-                        random->Uniform(0, 1)),
-            dendrite->GetSpringAxis());
-        auto dendrite_2 = dendrite->Branch(branch_direction);
+        Double3 branch_direction =
+            Math::Perp3(dendrite->GetUnitaryAxisDirectionVector() + rand_noise,
+                        random->Uniform(0, 1)) +
+            dendrite->GetSpringAxis();
+        auto* dendrite_2 =
+            bdm_static_cast<MyNeurite*>(dendrite->Branch(branch_direction));
         dendrite_2->SetCanBranch(false);
         dendrite_2->SetDiameter(0.65);
       }
@@ -83,22 +95,34 @@ struct ApicalElongationBM : public BaseBiologyModule {
  private:
   bool init_ = false;
   DiffusionGrid* dg_guide_ = nullptr;
-  ClassDefNV(ApicalElongationBM, 1);
-};
+  BDM_CLASS_DEF_OVERRIDE(ApicalElongation_BM, 1);
+};  // end ApicalElongation_BM
 
-struct BasalElongationBM : public BaseBiologyModule {
-  BasalElongationBM() : BaseBiologyModule(gAllEventIds) {}
+
+// BasalElongation_BM
+struct BasalElongation_BM : public BaseBiologyModule {
+  BasalElongation_BM() : BaseBiologyModule(gAllEventIds) {}
 
   /// Default event constructor
-  template <typename TEvent, typename TBm>
-  BasalElongationBM(const TEvent& event, TBm* other, uint64_t new_oid = 0)
+  BasalElongation_BM(const Event& event, BaseBiologyModule* other,
+                     uint64_t new_oid = 0)
       : BaseBiologyModule(event, other, new_oid) {}
+
+  /// Create a new instance of this object using the default constructor.
+  BaseBiologyModule* GetInstance(const Event& event, BaseBiologyModule* other,
+                                 uint64_t new_oid = 0) const override {
+    return new BasalElongation_BM(event, other, new_oid);
+  }
+
+  /// Create a copy of this biology module.
+  BaseBiologyModule* GetCopy() const override {
+    return new BasalElongation_BM(*this);
+  }
 
   // TODO: don't copy BM when split (elongate)
 
-  template <typename T, typename TSimulation = Simulation<>>
-  void Run(T* dendrite) {
-    auto* sim = TSimulation::GetActive();
+  void Run(SimObject* so) override {
+    auto* sim = Simulation::GetActive();
     auto* random = sim->GetRandom();
     auto* rm = sim->GetResourceManager();
 
@@ -107,39 +131,41 @@ struct BasalElongationBM : public BaseBiologyModule {
       init_ = true;
     }
 
-    if (dendrite->IsTerminal() && dendrite->GetDiameter() > 0.75) {
-      std::array<double, 3> gradient;
+    auto* dendrite = bdm_static_cast<MyNeurite*>(so);
+    if (dendrite->IsTerminal() && dendrite->GetDiameter() > 0.7) {
+      Double3 gradient;
       dg_guide_->GetGradient(dendrite->GetPosition(), &gradient);
+      // double concentration = 0;
 
-      double gradient_weight = 0.02;
-      double randomness_weight = 0.5;
-      double old_direction_weight = 5;
+      double gradient_weight = 0.03;
+      double randomness_weight = 0.4;
+      double old_direction_weight = 6;
 
-      auto random_axis = random->template UniformArray<3>(-1, 1);
+      Double3 random_axis = {random->Uniform(-1, 1), random->Uniform(-1, 1),
+                             random->Uniform(-1, 1)};
 
-      auto old_direction =
-          Math::ScalarMult(old_direction_weight, dendrite->GetSpringAxis());
-      auto grad_direction = Math::ScalarMult(gradient_weight, gradient);
-      auto random_direction = Math::ScalarMult(randomness_weight, random_axis);
+      auto old_direction = dendrite->GetSpringAxis() * old_direction_weight;
+      auto grad_direction = gradient * gradient_weight;
+      auto random_direction = random_axis * randomness_weight;
 
-      auto new_step_direction =
-          Math::Add(Math::Add(old_direction, random_direction), grad_direction);
+      Double3 new_step_direction =
+          old_direction + random_direction + grad_direction;
 
-      dendrite->ElongateTerminalEnd(25, new_step_direction);
-      dendrite->SetDiameter(dendrite->GetDiameter() - 0.001);
+      dendrite->ElongateTerminalEnd(50, new_step_direction);
+      dendrite->SetDiameter(dendrite->GetDiameter() - 0.00085);
 
-      if (random->Uniform() < 0.008) {
-        dendrite->SetDiameter(dendrite->GetDiameter() - 0.01);
+      if (random->Uniform() < 0.006) {
         dendrite->Bifurcate();
       }
-    }
-  }
+    }  // end if diameter
+  }  // end run
 
  private:
   bool init_ = false;
   DiffusionGrid* dg_guide_ = nullptr;
-  ClassDefNV(BasalElongationBM, 1);
-};
+  BDM_CLASS_DEF_OVERRIDE(BasalElongation_BM, 1);
+}; // end BasalElongation_BM
+
 
 }  // namespace bdm
 

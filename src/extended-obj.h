@@ -20,85 +20,57 @@
 
 namespace bdm {
 
-  // Define my custom cell object MyCell extending NeuronSoma
-  BDM_SIM_OBJECT(MyCell, experimental::neuroscience::NeuronSoma) {
-    BDM_SIM_OBJECT_HEADER(MyCell, experimental::neuroscience::NeuronSoma, 1, labelSWC_);
+// // Define my custom soma MyCell, which extends SomaElement
+// class MyCell : public experimental::neuroscience::NeuronSoma {
+//   BDM_SIM_OBJECT_HEADER(MyCell, experimental::neuroscience::NeuronSoma, 1, swc_label_);
+//
+//   public:
+//     MyCell() : Base() {}
+//
+//     virtual ~MyCell() {}
+//
+//     MyCell(const Double3& position) : Base(position) {}
+//
+//     // Default event constructor
+//     MyCell(const Event& event, SimObject* other, uint64_t new_oid = 0)
+//       : Base(event, other, new_oid) {}
+//
+//     void SetLabel(int l) { swc_label_ = l; }
+//     int GetLabel() const { return swc_label_; }
+//     void IncreaseLabel() { swc_label_ += 1; }
+//
+//   private:
+//     int swc_label_ = 0;
+// };
 
-   public:
-    // creators
-    MyCellExt() {}
-    MyCellExt(const array<double, 3>& position) : Base(position) {}
 
-    /// Default event constructor
-    template <typename TEvent, typename TOther>
-    MyCellExt(const TEvent& event, TOther* other, uint64_t new_oid = 0)
-      : Base(event, other, new_oid) {}
+// Define my custom neurite MyNeurite, which extends NeuriteElement
+class MyNeurite : public experimental::neuroscience::NeuriteElement {
+  BDM_SIM_OBJECT_HEADER(MyNeurite, experimental::neuroscience::NeuriteElement,
+                        1, can_branch_);
 
-    /// Default event handler
-    template <typename TEvent, typename... TOthers>
-    void EventHandler(const TEvent& event, TOthers*... others) {
-      Base::EventHandler(event, others...);
-    }
+  public:
+    MyNeurite() : Base() {}
 
-    // define my custom functions for MyCell
-    // set labelSWC_ to specified value
-    inline void SetLabel(int label) { labelSWC_[kIdx] = label; }
-    // return labelSWC_ value
-    inline int GetLabel() const { return labelSWC_[kIdx]; }
-    // increase by 1 the value of labelSWC_
-    inline void IncreaseLabel() { labelSWC_[kIdx] = labelSWC_[kIdx] + 1; }
-
-   private:
-    // new attribure for MyCell
-    vec<int> labelSWC_;
-  };
-
-  // Define my custom neurite MyNeurite, which extends NeuriteElement
-  BDM_SIM_OBJECT(MyNeurite, experimental::neuroscience::NeuriteElement) {
-    BDM_SIM_OBJECT_HEADER(MyNeurite, experimental::neuroscience::NeuriteElement, 1,
-      can_branch_, its_soma_);
-
-   public:
-    // creators
-    MyNeuriteExt() {}
-    MyNeuriteExt(const array<double, 3>& position) : Base(position) {}
-
-    using NeuronSoma = typename TCompileTimeParam::NeuronSoma;
-    using NeuronSomaSoPtr = ToSoPtr<NeuronSoma>;
+    virtual ~MyNeurite() {}
 
     /// Default event constructor
-    template <typename TEvent, typename TOther>
-    MyNeuriteExt(const TEvent& event, TOther* other, uint64_t new_oid = 0) : Base(event, other, new_oid) {
-      its_soma_[kIdx] = other->its_soma_[other->kIdx];
-    }
+    MyNeurite(const Event& event, SimObject* other, uint64_t new_oid = 0)
+    : Base(event, other, new_oid) {}
 
-    template <typename TOther>
-    MyNeuriteExt(const experimental::neuroscience::NewNeuriteExtensionEvent& event,
-      TOther* other, uint64_t new_oid = 0) : Base(event, other, new_oid) {
-      its_soma_[kIdx] = other->GetSoPtr();
-  }
+    // Default event handler
+    void EventHandler(const Event& event, SimObject* other1,
+      SimObject* other2 = nullptr) {
+        Base::EventHandler(event, other1, other2);
+      }
 
-    /// Default event handler
-    template <typename TEvent, typename... TOthers>
-    void EventHandler(const TEvent& event, TOthers*... others) {
-      Base::EventHandler(event, others...);
-    }
+    void SetCanBranch(int b) { can_branch_ = b; }
+    bool GetCanBranch() const { return can_branch_; }
 
-    // define my custom functions for MyNeurite
-    // set can_branch_ to specified bool
-    void SetCanBranch(int b) { can_branch_[kIdx] = b; }
-    // return can_branch_ value
-    bool GetCanBranch() const { return can_branch_[kIdx]; }
+  private:
+    bool can_branch_ = false;
+};
 
-
-    void SetMySoma(NeuronSomaSoPtr soma) { its_soma_[kIdx] = soma; }
-    NeuronSomaSoPtr GetMySoma() { return its_soma_[kIdx]; }
-
-   private:
-    // new attribure for MyNeurite
-    vec<bool> can_branch_;
-    vec<NeuronSomaSoPtr> its_soma_;
-  };
 }  // namespace bdm
 
-#endif  // MY_NEURITE_H_
+#endif  // EXTENDED_OBJ_H_

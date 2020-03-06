@@ -23,83 +23,42 @@
 
 namespace bdm {
 
-// Define compile time parameter
-BDM_CTPARAM(experimental::neuroscience) {
-  BDM_CTPARAM_HEADER(experimental::neuroscience);
-
-  using NeuronSoma = MyCell;
-  using NeuriteElement = MyNeurite;
-  using SimObjectTypes = CTList<MyCell, MyNeurite>;
-
-  BDM_CTPARAM_FOR(bdm, MyCell) {
-    using BiologyModules = CTList<NullBiologyModule>;
-  };
-
-  BDM_CTPARAM_FOR(bdm, MyNeurite) {
-    using BiologyModules = CTList<ApicalElongationBM, BasalElongationBM>;
-  };
-
-};  // end BDM_CTPARAM
-
-struct NeuronBuilder {
-  void operator()(const std::array<double, 3>& position) {
-    auto* rm = Simulation<>::GetActive()->GetResourceManager();
-
-    MyCell soma(position);
-    soma.SetDiameter(10);
-    auto soma_soptr = soma.GetSoPtr();
-    rm->push_back(soma);
-
-    auto&& dendrite_apical = soma_soptr->ExtendNewNeurite({0, 0, 1});
-    dendrite_apical->AddBiologyModule(ApicalElongationBM());
-    dendrite_apical->SetCanBranch(true);
-    dendrite_apical->SetMySoma(soma->GetSoPtr());
-
-    auto&& dendrite_basal1 = soma_soptr->ExtendNewNeurite({0, 0, -1});
-    dendrite_basal1->AddBiologyModule(BasalElongationBM());
-    dendrite_basal1->SetMySoma(soma->GetSoPtr());
-
-    auto&& dendrite_basal2 = soma_soptr->ExtendNewNeurite({0, 0.6, -0.8});
-    dendrite_basal2->AddBiologyModule(BasalElongationBM());
-    dendrite_basal2->SetMySoma(soma->GetSoPtr());
-
-    auto&& dendrite_basal3 = soma_soptr->ExtendNewNeurite({0.3, -0.6, -0.8});
-    dendrite_basal3->AddBiologyModule(BasalElongationBM());
-    dendrite_basal3->SetMySoma(soma->GetSoPtr());
-  }
-};
-
-/// define substance for neurite attraction
-inline void DefineSubstances(const Param* param) {
-  ModelInitializer::DefineSubstance(kSubstanceApical, "substance_apical", 0, 0,
-                                    param->max_bound_ / 2);
-  ModelInitializer::DefineSubstance(kSubstanceBasal, "substance_basal", 0, 0,
-                                    param->max_bound_ / 2);
-  // create substance with gaussian distribution for neurite attraction
-  ModelInitializer::InitializeSubstance(
-      kSubstanceApical, GaussianBand(param->max_bound_, 200, Axis::kZAxis));
-  ModelInitializer::InitializeSubstance(
-      kSubstanceBasal, GaussianBand(param->min_bound_, 200, Axis::kZAxis));
-}
-
 inline int Simulate(int argc, const char** argv) {
-  Simulation<> simulation(argc, argv);
 
-#pragma omp parallel
-  simulation.GetRandom()->SetSeed(8794);
-  simulation.GetExecutionContext()->DisableNeighborGuard();
+  // number of cells in simulation
+  int num_cells = 4;
+  // size of simulation space
+  int simulation_space = 500;
+  auto set_param = [&](Param* param) {
+    // Create an artificial bounds for the simulation space
+    param->bound_space_ = true;
+    param->min_bound_ = -simulation_space/2;
+    param->max_bound_ = simulation_space/2;
+  };
 
-  NeuronBuilder builder;
-  builder({0, 0, 0});
-  DefineSubstances(simulation.GetParam());
+  // initialise neuroscience modlues
+  experimental::neuroscience::InitModule();
 
-  simulation.GetScheduler()->Simulate(500);
+  Simulation simulation(argc, argv, set_param);
 
-  morpho_exporteur();
+  auto* scheduler = simulation.GetScheduler();
+  auto* param = simulation.GetParam();
+  auto* random = simulation.GetRandom();
+  random->SetSeed(8794);
+
+  // create chemical substances
+  SubstanceCreator(param->max_bound_);
+
+  // create cells
+  CellCreator(param->min_bound_, param->max_bound_, num_cells);
+
+  // simulate
+  scheduler->Simulate(500);
 
   std::cout << "Simulation completed successfully!" << std::endl;
   return 0;
-}
+
+} // end Simulate
 
 }  // namespace bdm
 
